@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="es" class="light">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Consulta VM · Diagnóstico Estratégico</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script>
+tailwind.config={darkMode:"class",theme:{extend:{
+  colors:{
+    "vm-navy":"#1B2B6B","vm-navy-dark":"#001356",
+    "vm-red":"#C8202F","vm-red-dark":"#A31825",
+    "vm-gold":"#C8A84B","vm-gold-light":"#FFE08C",
+    "surface":"#F8F9FD","surface-low":"#F2F3F7",
+    "on-surface":"#191C1F","on-surface-muted":"#454650",
+    "outline":"#767681","outline-light":"#E2E6F0",
+  },
+  fontFamily:{"display":["Playfair Display","serif"],"sans":["Inter","sans-serif"]},
+  borderRadius:{"card":"20px","pill":"9999px"},
+}}}
+</script>
+<style>
+*{box-sizing:border-box}
+body{-webkit-font-smoothing:antialiased;font-family:'Inter',sans-serif;background:#F8F9FD;overflow-x:hidden}
+.material-symbols-outlined{font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;font-family:'Material Symbols Outlined'}
+.fill-icon{font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24}
+/* Wave */
+.wave-svg{position:absolute;bottom:-1px;left:0;width:100%;overflow:hidden;line-height:0;transform:rotate(180deg)}
+.wave-svg svg{display:block;width:calc(100% + 1px);height:70px}
+.wave-fill{fill:#F8F9FD}
+/* FX */
+.glow-red{background:radial-gradient(ellipse 80% 60% at 50% 120%,rgba(200,32,47,0.18) 0%,transparent 65%)}
+.card-shadow{box-shadow:0 15px 40px rgba(27,43,107,0.08)}
+.glass-card{backdrop-filter:blur(8px);transition:all 0.35s cubic-bezier(0.16,1,0.3,1)}
+.glass-card:hover{transform:translateY(-6px);box-shadow:0 25px 50px rgba(27,43,107,0.14)}
+.tc{transition:all 0.3s cubic-bezier(0.16,1,0.3,1)}
+/* Pills */
+.pill-option{transition:all 0.22s cubic-bezier(0.4,0,0.2,1);text-align:left;border:2px solid #1B2B6B;color:#001356;border-radius:9999px;width:100%;display:flex;align-items:center;justify-content:space-between;padding:14px 20px;font-size:14px;font-weight:500;background:white;cursor:pointer}
+.pill-option:hover{background:rgba(27,43,107,0.04)}
+.pill-option.selected{background:#1B2B6B;color:white;border-color:#1B2B6B}
+/* Dots */
+.dot-done{background:white}
+.dot-current{background:#C8202F;box-shadow:0 0 10px rgba(200,32,47,0.5);animation:pulse-dot 1.5s ease-in-out infinite}
+.dot-pending{background:transparent;border:1.5px solid rgba(255,255,255,0.35)}
+@keyframes pulse-dot{0%,100%{transform:scale(1)}50%{transform:scale(1.25)}}
+/* Anims */
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.fade-up{animation:fadeUp 0.55s cubic-bezier(0.16,1,0.3,1) both}
+.delay-1{animation-delay:.15s}.delay-2{animation-delay:.28s}.delay-3{animation-delay:.41s}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.cursor-blink::after{content:'▋';font-size:11px;animation:blink .7s infinite;color:#1B2B6B;margin-left:2px}
+.cursor-blink.done::after{display:none}
+@keyframes slideIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
+.slide-in{animation:slideIn 0.4s cubic-bezier(0.16,1,0.3,1) both}
+/* Screens */
+.screen{display:none}.screen.active{display:flex}
+.bar-fill{transition:width 1s cubic-bezier(0.16,1,0.3,1)}
+@keyframes newFlash{0%{background:#EEF0F8;border-color:#1B2B6B}100%{background:white;border-color:#E2E6F0}}
+.answer-new{animation:newFlash 2s ease forwards}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-thumb{background:#C6C5D2;border-radius:4px}
+
+/* PIN overlay */
+#pin-overlay{position:fixed;inset:0;background:rgba(0,19,86,0.96);z-index:1000;display:none;flex-direction:column;align-items:center;justify-content:center;backdrop-filter:blur(8px)}
+#pin-input{width:180px;text-align:center;font-size:28px;letter-spacing:12px;font-weight:700;color:#1B2B6B;border:2px solid #E2E6F0;border-radius:16px;padding:14px 20px;outline:none;font-family:Inter,sans-serif;background:white}
+#pin-input:focus{border-color:#1B2B6B}
+#pin-error{color:#C8202F;font-size:12px;font-weight:600;margin-top:8px;opacity:0;transition:opacity .3s}
+#pin-error.show{opacity:1}
+
+/* POPUP PROPUESTA */
+#popup-propuesta{position:fixed;inset:0;z-index:2000;display:none;align-items:center;justify-content:center;background:rgba(0,19,86,0.6);backdrop-filter:blur(4px);padding:16px}
+.popup-box{background:white;border-radius:24px;width:100%;max-width:640px;max-height:90vh;overflow-y:auto;box-shadow:0 40px 80px rgba(27,43,107,0.2);display:flex;flex-direction:column}
+.popup-header{background:#1B2B6B;border-radius:24px 24px 0 0;padding:24px 28px;position:relative}
+.popup-close{position:absolute;top:16px;right:16px;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:white;transition:background .2s}
+.popup-close:hover{background:rgba(255,255,255,0.2)}
+.popup-body{padding:24px 28px;flex:1}
+.proposal-block{border-radius:14px;padding:18px 20px;margin-bottom:14px;border-left:4px solid}
+.proposal-block.study{border-color:#C8A84B;background:#FFFDF0}
+.proposal-block.process{border-color:#1B2B6B;background:#F0F2FA}
+.proposal-block.system{border-color:#16a34a;background:#F0FDF4}
+@keyframes fadeInPop{from{opacity:0;transform:scale(0.96)}to{opacity:1;transform:scale(1)}}
+.popup-box{animation:fadeInPop .3s cubic-bezier(0.16,1,0.3,1)}
+
+/* Tag tipo pregunta */
+.tag-emotional{background:#FFF8E6;color:#8B6914;font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;letter-spacing:.08em;text-transform:uppercase}
+.tag-technical{background:#EEF0F8;color:#1B2B6B;font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;letter-spacing:.08em;text-transform:uppercase}
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- PIN -->
+<div id="pin-overlay" style="display:none;flex-direction:column;align-items:center;justify-content:center">
+  <div class="flex flex-col items-center gap-5">
+    <div class="text-center mb-2">
+      <div class="text-white/40 text-xs font-bold tracking-widest uppercase mb-2">Acceso restringido</div>
+      <div class="text-white font-display italic text-2xl font-semibold">Panel TRAMA</div>
+      <div class="text-white/40 text-xs mt-1">Consulta VM · Diagnóstico Estratégico</div>
+    </div>
+    <div class="flex flex-col items-center gap-2">
+      <input id="pin-input" type="password" maxlength="4" placeholder="····" autocomplete="off" oninput="checkPin(this.value)"/>
+      <div id="pin-error">PIN incorrecto</div>
+    </div>
+    <div class="text-white/25 text-xs">Ingresa el PIN de 4 dígitos</div>
+  </div>
+</div>
+
+<!-- POPUP PROPUESTA -->
+<div id="popup-propuesta" style="display:none">
+  <div class="popup-box">
+    <div class="popup-header">
+      <button class="popup-close" onclick="closePopup()">
+        <span class="material-symbols-outlined text-sm">close</span>
+      </button>
+      <div class="text-white/60 text-xs font-bold tracking-widest uppercase mb-1">Basado en sus respuestas</div>
+      <div class="text-white font-display text-2xl italic font-semibold leading-snug">Nuestra propuesta<br/>para Villa María</div>
+    </div>
+    <div class="popup-body">
+      <div id="popup-content">
+        <div class="flex items-center gap-2 py-8 justify-center text-outline">
+          <span class="material-symbols-outlined animate-spin text-vm-navy">progress_activity</span>
+          <span class="text-sm">Personalizando propuesta…</span>
+        </div>
+      </div>
+      <div class="mt-4 pt-4 border-t border-outline-light flex items-center justify-between">
+        <div class="text-xs text-outline italic">Generado con IA · TRAMA Consultora 2026</div>
+        <button onclick="closePopup()" class="bg-vm-navy text-white text-xs font-bold px-5 py-2.5 rounded-pill transition-all hover:bg-vm-navy-dark">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SELECTOR ══ -->
+<div id="view-selector" class="min-h-screen bg-vm-navy flex flex-col items-center justify-between overflow-hidden relative">
+  <div class="absolute inset-0 glow-red pointer-events-none"></div>
+  <main class="relative z-10 w-full max-w-lg mx-auto flex flex-col flex-1 items-center justify-center px-6 py-12">
+
+    <!-- Marca Consulta VM -->
+    <div class="text-center mb-10 fade-up">
+      <div class="inline-flex items-center gap-2 mb-6">
+        <div class="w-8 h-8 rounded-lg bg-vm-red flex items-center justify-center">
+          <span class="text-white font-bold text-xs tracking-wider">VM</span>
+        </div>
+        <span class="text-white font-bold text-sm tracking-widest uppercase">Consulta VM</span>
+      </div>
+      <h1 class="font-display text-4xl font-bold text-white leading-tight tracking-tight mb-3">
+        Diagnóstico<br/><span class="italic font-normal text-white/70">estratégico</span>
+      </h1>
+      <p class="text-white/50 text-sm font-light">
+        Mix de patrones emocionales y análisis técnico de marketing
+      </p>
+    </div>
+
+    <div class="w-full flex flex-col gap-4 fade-up delay-2">
+      <button onclick="goThem()" class="glass-card w-full bg-white rounded-card p-7 text-left flex flex-col gap-3 card-shadow">
+        <div class="flex items-center justify-between">
+          <div class="w-12 h-12 rounded-2xl bg-vm-navy/6 flex items-center justify-center">
+            <span class="material-symbols-outlined text-2xl text-vm-navy">school</span>
+          </div>
+          <span class="material-symbols-outlined text-outline/40">arrow_forward</span>
+        </div>
+        <div>
+          <h3 class="font-display text-lg font-semibold text-vm-navy-dark mb-1">Equipo Villa María</h3>
+          <p class="text-on-surface-muted text-sm leading-relaxed">Responder las preguntas del diagnóstico estratégico 2026.</p>
+        </div>
+        <div class="font-bold text-xs text-vm-navy tracking-widest uppercase">Iniciar sesión →</div>
+      </button>
+
+      <button onclick="showPin()" class="glass-card w-full bg-white rounded-card p-7 text-left flex flex-col gap-3 card-shadow">
+        <div class="flex items-center justify-between">
+          <div class="w-12 h-12 rounded-2xl bg-vm-red/6 flex items-center justify-center">
+            <span class="material-symbols-outlined text-2xl text-vm-red">manage_search</span>
+          </div>
+          <div class="flex items-center gap-1">
+            <span class="material-symbols-outlined text-outline/40 text-sm">lock</span>
+            <span class="material-symbols-outlined text-outline/40">arrow_forward</span>
+          </div>
+        </div>
+        <div>
+          <h3 class="font-display text-lg font-semibold text-vm-navy-dark mb-1">Panel TRAMA</h3>
+          <p class="text-on-surface-muted text-sm leading-relaxed">Análisis conductual en tiempo real. Acceso restringido.</p>
+        </div>
+        <div class="font-bold text-xs text-vm-red tracking-widest uppercase">Acceso con PIN →</div>
+      </button>
+    </div>
+
+  </main>
+  <footer class="relative z-10 py-5 text-center fade-up delay-3">
+    <span class="text-white/25 text-xs tracking-widest uppercase">Consulta VM · TRAMA Consultora · 2026</span>
+  </footer>
+</div>
+
+<!-- ══ APP ELLAS ══ -->
+<div id="view-them" class="hidden min-h-screen flex-col">
+  <header class="sticky top-0 z-50 bg-vm-navy shadow-lg">
+    <div class="max-w-2xl mx-auto px-5 pt-4 pb-3 flex flex-col gap-3">
+      <div class="flex justify-between items-center">
+        <div class="flex items-center gap-2">
+          <div class="w-7 h-7 rounded-lg bg-vm-red flex items-center justify-center">
+            <span class="text-white font-bold text-xs">VM</span>
+          </div>
+          <div>
+            <div class="text-white font-bold text-sm leading-none tracking-wide">Consulta VM</div>
+            <div class="text-white/45 text-xs mt-0.5">Villa María · Diagnóstico 2026</div>
+          </div>
+        </div>
+        <div class="text-right">
+          <div class="text-vm-gold-light font-bold text-sm" id="them-progress-pct">0%</div>
+        </div>
+      </div>
+      <div class="w-full h-1.5 bg-white/15 rounded-pill overflow-hidden">
+        <div class="h-full bg-vm-gold-light rounded-pill bar-fill" id="them-bar" style="width:0%"></div>
+      </div>
+      <div class="flex items-center justify-center gap-1.5 pb-1" id="them-dots"></div>
+    </div>
+  </header>
+
+  <!-- INTRO -->
+  <div id="them-intro" class="screen active flex-col flex-1">
+    <div class="bg-vm-navy relative pt-10 pb-20 px-6 text-center overflow-hidden">
+      <div class="absolute inset-0 glow-red pointer-events-none"></div>
+      <div class="relative z-10 max-w-lg mx-auto">
+        <span class="inline-block px-4 py-1 bg-vm-gold-light text-vm-navy-dark font-bold text-xs rounded-pill mb-5 tracking-widest uppercase">Diagnóstico estratégico · 2026</span>
+        <h1 class="font-display text-3xl text-white italic leading-snug mb-4">"Antes de proponer,<br/>necesitamos escucharlas"</h1>
+        <p class="text-white/55 text-sm font-light leading-relaxed max-w-sm mx-auto">Sesión de preguntas diseñada para identificar patrones emocionales y datos clave del área de marketing.</p>
+      </div>
+      <div class="wave-svg">
+        <svg viewBox="0 0 1200 70" preserveAspectRatio="none"><path class="wave-fill" d="M985.66,54C906.67,42,823.78,18,743.84,8.3c-82.26-10.2-168.06-9.6-250.45.23-57.84,6.9-114,18.3-172,24.6A600,600,0,0,1,0,16V70H1200V56C1132.19,70,1055.71,65.5,985.66,54Z"/></svg>
+      </div>
+    </div>
+    <div class="flex-1 px-5 pt-4 pb-8 max-w-xl mx-auto w-full">
+      <!-- Pilares -->
+      <div class="flex flex-col gap-3">
+        <div class="bg-white rounded-card p-5 border-l-[4px] border-vm-gold card-shadow tc fade-up">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-vm-gold/10 flex items-center justify-center flex-shrink-0">
+              <span class="material-symbols-outlined text-vm-gold text-lg">insights</span>
+            </div>
+            <div>
+              <div class="font-display text-sm font-semibold text-vm-navy-dark">01 · Estudio de mercado y stakeholders</div>
+              <div class="text-on-surface-muted text-xs mt-0.5">Entender a las familias y los mensajes que conectan con Villa María.</div>
+            </div>
+          </div>
+        </div>
+        <div class="bg-white rounded-card p-5 border-l-[4px] border-vm-navy card-shadow tc fade-up delay-1">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-vm-navy/8 flex items-center justify-center flex-shrink-0">
+              <span class="material-symbols-outlined text-vm-navy text-lg">account_tree</span>
+            </div>
+            <div>
+              <div class="font-display text-sm font-semibold text-vm-navy-dark">02 · Levantamiento de procesos</div>
+              <div class="text-on-surface-muted text-xs mt-0.5">Mapear cómo funciona el área para digitalizarla sin perder lo que funciona.</div>
+            </div>
+          </div>
+        </div>
+        <div class="bg-white rounded-card p-5 border-l-[4px] border-green-500 card-shadow tc fade-up delay-2">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-green-50 flex items-center justify-center flex-shrink-0">
+              <span class="material-symbols-outlined text-green-600 text-lg">campaign</span>
+            </div>
+            <div>
+              <div class="font-display text-sm font-semibold text-vm-navy-dark">03 · Sistema de marketing integrado</div>
+              <div class="text-on-surface-muted text-xs mt-0.5">Plataforma construida a medida del colegio.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="mt-7 flex flex-col items-center gap-3 fade-up delay-3">
+        <p class="text-outline text-xs italic text-center">16 preguntas · Emocionales y técnicas · Sin respuestas correctas</p>
+        <button onclick="startQuestions()" class="bg-vm-red hover:bg-vm-red-dark text-white font-bold text-sm px-10 py-4 rounded-pill flex items-center gap-2 shadow-xl transition-all active:scale-95">
+          Comenzar sesión
+          <span class="material-symbols-outlined text-lg">arrow_forward</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PREGUNTAS -->
+  <div id="them-questions" class="screen flex-col flex-1 px-5 py-6">
+    <div class="max-w-xl mx-auto w-full flex flex-col flex-1">
+      <div class="flex items-center gap-3 mb-4">
+        <span class="text-xs font-bold tracking-[0.12em] uppercase text-outline" id="q-block-label">Bloque</span>
+        <div class="flex-1 h-px bg-outline-light"></div>
+        <span id="q-type-tag"></span>
+      </div>
+      <div id="q-card" class="bg-white rounded-card card-shadow flex-1 flex flex-col p-6" style="border-left:4px solid #C8A84B">
+        <div class="flex items-center justify-between mb-4">
+          <span id="q-number-tag" class="text-white text-xs font-bold px-4 py-1 rounded-pill uppercase tracking-wider" style="background:#C8202F">Pregunta 1</span>
+        </div>
+        <h2 class="font-display text-xl text-vm-navy-dark leading-snug mb-2" id="q-text"></h2>
+        <p class="text-outline text-sm italic mb-5 leading-relaxed" id="q-hint"></p>
+        <div class="flex-1" id="q-input-area"></div>
+        <div class="flex items-center justify-between mt-5 pt-4 border-t border-outline-light/50">
+          <div class="flex items-center gap-1" id="q-mini-dots"></div>
+          <button id="btn-next-q" onclick="nextQ()" disabled
+            class="bg-vm-navy disabled:opacity-30 text-white font-bold text-sm px-6 py-3 rounded-pill flex items-center gap-2 transition-all active:scale-95">
+            Siguiente
+            <span class="material-symbols-outlined text-base">arrow_forward</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GRACIAS -->
+  <div id="them-thanks" class="screen flex-col flex-1 items-center justify-center bg-vm-navy px-6 text-center">
+    <div class="glow-red absolute inset-0 pointer-events-none"></div>
+    <div class="relative z-10">
+      <div class="text-5xl mb-5">✨</div>
+      <h2 class="font-display text-3xl text-white font-semibold mb-3 italic">Gracias por compartir</h2>
+      <p class="text-white/55 text-sm font-light leading-relaxed max-w-xs">Sus respuestas nos ayudan a entender el área y a proponer algo que realmente tenga sentido para Villa María.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PANEL TRAMA ══ -->
+<div id="view-me" class="hidden min-h-screen flex-col bg-surface">
+  <header class="bg-vm-navy px-5 py-3.5 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-7 h-7 rounded-lg bg-vm-red flex items-center justify-center">
+        <span class="text-white font-bold text-xs">VM</span>
+      </div>
+      <span class="bg-vm-red text-white text-xs font-bold px-3 py-1 rounded-pill uppercase tracking-wider">Privado · TRAMA</span>
+      <span class="text-white font-medium text-sm hidden sm:block">Panel de análisis</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <button onclick="openPopup()" id="btn-propuesta" disabled
+        class="bg-vm-gold disabled:opacity-30 text-vm-navy-dark text-xs font-bold px-4 py-2 rounded-pill transition-all flex items-center gap-1.5">
+        <span class="material-symbols-outlined text-sm">auto_awesome</span>
+        Nuestra propuesta
+      </button>
+      <div class="flex items-center gap-1.5">
+        <div class="w-2 h-2 rounded-full bg-outline" id="me-status-dot"></div>
+        <span class="text-white/50 text-xs uppercase tracking-wider font-semibold" id="me-status-txt">Esperando</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="flex flex-1 overflow-hidden" style="height:calc(100vh - 56px)">
+    <!-- Sidebar -->
+    <div class="w-60 flex-shrink-0 border-r border-outline-light bg-white flex flex-col">
+      <div class="px-4 py-3 border-b border-outline-light flex items-center justify-between">
+        <span class="text-xs font-bold tracking-[0.10em] uppercase text-outline">Respuestas</span>
+        <span class="text-xs font-bold text-vm-navy bg-vm-navy/8 px-2 py-0.5 rounded-pill" id="me-count">0</span>
+      </div>
+      <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2" id="me-answers-list">
+        <div class="text-xs text-outline text-center py-8 leading-relaxed font-light px-3">Las respuestas aparecerán aquí en tiempo real.</div>
+      </div>
+    </div>
+
+    <!-- Análisis -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-outline-light bg-white">
+        <div class="text-xs font-bold tracking-[0.10em] uppercase text-outline">Inteligencia diagnóstica · IA</div>
+        <button id="btn-analyze" onclick="runAnalysis()" disabled
+          class="bg-vm-navy disabled:opacity-30 text-white text-xs font-bold px-4 py-2 rounded-pill transition-all">
+          Analizar patrones
+        </button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-5" id="me-analysis-area">
+        <div class="flex flex-col items-center justify-center h-full text-center gap-3 text-outline">
+          <span class="material-symbols-outlined text-4xl opacity-25">psychology</span>
+          <p class="text-sm font-light max-w-xs leading-relaxed">Con 3+ respuestas activa el análisis de patrones conductuales.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── PIN ──
+const PIN='2026';
+function showPin(){const o=document.getElementById('pin-overlay');o.style.display='flex';setTimeout(()=>document.getElementById('pin-input').focus(),100)}
+function checkPin(v){
+  if(v.length===4){
+    if(v===PIN){document.getElementById('pin-overlay').style.display='none';document.getElementById('pin-input').value='';goMe()}
+    else{document.getElementById('pin-error').classList.add('show');document.getElementById('pin-input').value='';setTimeout(()=>document.getElementById('pin-error').classList.remove('show'),2000)}
+  }
+}
+
+// ── STORAGE ──
+const SK='consulta_vm_2026';
+function saveA(k,v,qt){const a=JSON.parse(localStorage.getItem(SK)||'[]');const i=a.findIndex(x=>x.key===k);const e={key:k,value:v,qtext:qt,ts:Date.now()};if(i>=0)a[i]=e;else a.push(e);localStorage.setItem(SK,JSON.stringify(a))}
+function loadA(){return JSON.parse(localStorage.getItem(SK)||'[]')}
+function clearA(){localStorage.removeItem(SK)}
+
+// ── 16 PREGUNTAS ──
+const QS=[
+  // BLOQUE 1: Inversión y segmentación
+  {block:"Inversión y segmentación",type:"technical",
+   text:"Tienen 27 mil seguidores en TikTok y más de 355 mil likes. ¿Están invirtiendo en pauta para amplificar ese contenido, o es completamente orgánico?",
+   hint:"No hay respuesta correcta — nos interesa saber cómo está distribuido el esfuerzo hoy.",
+   input:"opts",opts:["Todo es orgánico — no invertimos en pauta","Invertimos poco, menos de S/ 500 al mes","Invertimos entre S/ 500 y S/ 3,000 al mes","Tenemos una inversión mayor y estructurada"],key:"pauta"},
+  {block:"Inversión y segmentación",type:"technical",
+   text:"¿La comunicación está segmentada por nivel — inicial, primaria, secundaria — o manejan un solo mensaje para todas las familias?",
+   hint:"Una mamá que busca nursery y una que evalúa IB tienen motivaciones completamente distintas.",
+   input:"opts",opts:["Un solo mensaje para todas las familias","Segmentamos algo, pero no de manera sistemática","Sí, tenemos mensajes diferenciados por nivel","Segmentamos por nivel y por momento del proceso de admisión"],key:"segmentacion"},
+  {block:"Inversión y segmentación",type:"emotional",
+   text:"¿Quién toma las decisiones de qué publicar y cuándo? ¿Hay un proceso claro o cada quien publica según puede?",
+   hint:"Cuéntenlo tal como funciona hoy, sin idealizar.",
+   input:"opts",opts:["Hay una persona a cargo con criterio claro","Lo decidimos en equipo con un proceso definido","Cada persona publica según su criterio y disponibilidad","Es informal — publicamos cuando surge algo"],key:"decision_contenido"},
+  {block:"Inversión y segmentación",type:"technical",
+   text:"¿Distinguen en su comunicación entre contenido comercial (admisiones), contenido de valor (STEAM, IB, logros) y contenido de comunidad (vida escolar, exalumnas)?",
+   hint:"Vimos en Facebook una mezcla de inglés y español sin un criterio aparente — nos interesa saber si es intencional.",
+   input:"opts",opts:["No, publicamos lo que surge sin categorías","Tenemos una idea pero no está formalizado","Sí, diferenciamos los tipos de contenido","Sí, cada tipo tiene canal, frecuencia y objetivo definido"],key:"tipos_contenido"},
+
+  // BLOQUE 2: Datos y atribución
+  {block:"Datos y atribución",type:"technical",
+   text:"Cuando una familia llega a consultar, ¿saben de dónde vino? ¿Si fue por redes, por referido, por Google, por una feria?",
+   hint:"Atribución — si no lo miden, están invirtiendo esfuerzo sin saber qué funciona.",
+   input:"opts",opts:["No lo medimos — no sabemos de dónde vienen","Lo preguntamos a veces, pero no lo registramos","Tenemos un dato aproximado por canal","Sí, tenemos atribución clara por canal y lo usamos para decidir"],key:"atribucion"},
+  {block:"Datos y atribución",type:"technical",
+   text:"¿Cuentan con algún estudio de mercado sobre las familias que buscan colegio en La Molina y alrededores?",
+   hint:"No hace falta que sea formal — puede ser investigación propia, conversaciones, encuestas.",
+   input:"opts",opts:["No tenemos nada formal ni informal","Tenemos percepciones del equipo, pero sin datos","Hemos hecho algo informal — encuestas o conversaciones","Sí, tenemos data real de nuestra zona de captación"],key:"estudio_mercado"},
+  {block:"Datos y atribución",type:"emotional",
+   text:"Cuando un contenido funciona bien y genera muchas consultas, ¿saben por qué funcionó?",
+   hint:"La diferencia entre celebrar un resultado y aprender de él.",
+   input:"opts",opts:["Nos alegramos, pero no analizamos por qué","Tenemos intuición de por qué, pero no lo documentamos","A veces lo analizamos, a veces no","Sí, siempre identificamos qué generó el resultado"],key:"aprendizaje_contenido"},
+  {block:"Datos y atribución",type:"technical",
+   text:"¿Miden el engagement más allá de likes y seguidores? ¿Saben qué tipo de publicación genera más consultas de admisión?",
+   hint:"Sus videos de robótica e IB tienen alrededor de 100 likes con 27K seguidores — puede que no lo hayan notado.",
+   input:"opts",opts:["Solo miramos likes y seguidores","Vemos alcance e impresiones también","Medimos engagement rate y guardamos comparativas","Conectamos contenido específico con consultas recibidas"],key:"metricas"},
+
+  // BLOQUE 3: Procesos internos
+  {block:"Procesos internos",type:"emotional",
+   text:"Si una familia escribe al WhatsApp del colegio un domingo a las 8pm preguntando por admisiones, ¿qué pasa exactamente?",
+   hint:"Sin idealizar — descríbanlo tal como ocurre hoy.",
+   input:"opts",opts:["Se responde ese mismo día — alguien siempre está pendiente","Se responde el lunes cuando abre la oficina","Depende de quién vea el mensaje primero","Honestamente, no siempre se responde a tiempo"],key:"proceso_wa"},
+  {block:"Procesos internos",type:"technical",
+   text:"¿Tienen documentados sus procesos de marketing? — cómo se planifica una campaña, cómo se aprueba contenido, cómo se hace seguimiento a una familia interesada.",
+   hint:"No es un juicio — muchas áreas excelentes operan sin documentación.",
+   input:"opts",opts:["No, todo vive en la cabeza del equipo","Tenemos algo informal — checklists o conversaciones","Documentamos algunas cosas, pero no todo","Sí, tenemos procesos documentados y los seguimos"],key:"documentacion"},
+  {block:"Procesos internos",type:"emotional",
+   text:"¿Qué parte del trabajo del área depende completamente de una sola persona para funcionar?",
+   hint:"Si esa persona no estuviera un día, ¿qué se detendría?",
+   input:"text",key:"dependencia"},
+  {block:"Procesos internos",type:"technical",
+   text:"¿Qué pasaría si la persona que hoy maneja las consultas de admisión no estuviera disponible por una semana?",
+   hint:"Pregunta directa — la respuesta define cuánta resiliencia tiene el área.",
+   input:"opts",opts:["El proceso continúa — hay redundancia","Se ralentiza pero no se detiene","Se detiene — esa persona es quien sabe cómo","No lo hemos pensado — es una buena pregunta"],key:"resiliencia"},
+
+  // BLOQUE 4: Matrículas y oportunidades
+  {block:"Matrículas y oportunidades",type:"technical",
+   text:"Tienen activa la admisión nursery 2026–2027 en su bio de TikTok. ¿Cuál es la meta de nuevas matrículas para ese ciclo? ¿Están en camino de alcanzarla?",
+   hint:"Pueden dar un rango o porcentaje de avance — no necesitamos el número exacto.",
+   input:"text",key:"meta_matriculas"},
+  {block:"Matrículas y oportunidades",type:"emotional",
+   text:"La exalumna que entrevistó al Papa León XIV — ese contenido fue poderoso. ¿Eso forma parte de una estrategia intencional de 'Villamarianas que inspiran', o fue una publicación puntual?",
+   hint:"Nos interesa saber si tienen un sistema para capitalizar esas historias o si ocurren por accidente.",
+   input:"opts",opts:["Fue una publicación puntual — no hay estrategia detrás","Lo compartimos cuando surge, pero sin sistematizarlo","Tenemos la intención pero no está formalizado","Sí, tenemos una estrategia de historias de exalumnas"],key:"historias_exalumnas"},
+  {block:"Matrículas y oportunidades",type:"technical",
+   text:"¿Tienen un programa de referidos activo con las familias actuales? Para un colegio de este nivel, el boca a boca es el canal de mayor conversión.",
+   hint:"¿Lo están trabajando intencionalmente o dejando que ocurra solo?",
+   input:"opts",opts:["No, no tenemos nada formal de referidos","Las familias nos recomiendan, pero no lo estimulamos","Tenemos algo informal — agradecemos pero sin incentivo claro","Sí, tenemos un programa activo y lo medimos"],key:"referidos"},
+  {block:"Matrículas y oportunidades",type:"emotional",
+   text:"Si tuvieras que elegir un solo canal para duplicar la inversión el próximo año, ¿cuál sería y por qué?",
+   hint:"Revela dónde confían realmente — más honesto que cualquier reporte.",
+   input:"text",key:"canal_prioritario"},
+];
+
+let curQ=0,answers={};
+
+// ── NAV ──
+function show(id){['view-selector','view-them','view-me'].forEach(v=>{const el=document.getElementById(v);el.classList.add('hidden');el.classList.remove('flex')});const t=document.getElementById(id);t.classList.remove('hidden');t.classList.add('flex')}
+function goThem(){clearA();show('view-them');renderDots();showThem('them-intro')}
+function goMe(){show('view-me');pollAnswers();setInterval(pollAnswers,1500)}
+function showThem(sid){['them-intro','them-questions','them-thanks'].forEach(s=>document.getElementById(s).classList.remove('active'));document.getElementById(sid).classList.add('active')}
+
+// ── DOTS ──
+function renderDots(){
+  const c=document.getElementById('them-dots');c.innerHTML='';
+  QS.forEach((_,i)=>{const d=document.createElement('div');d.className='rounded-full transition-all duration-300 '+(i<curQ?'w-2 h-2 dot-done':i===curQ?'w-3 h-3 dot-current':'w-1.5 h-1.5 dot-pending');c.appendChild(d)});
+  const pct=Math.round((curQ/QS.length)*100);
+  document.getElementById('them-bar').style.width=pct+'%';
+  document.getElementById('them-progress-pct').textContent=pct+'%';
+}
+function renderMiniDots(){
+  const c=document.getElementById('q-mini-dots');c.innerHTML='';
+  QS.forEach((_,i)=>{const d=document.createElement('div');d.className='rounded-full transition-all duration-300 '+(i<curQ?'w-1.5 h-1.5 bg-vm-navy':i===curQ?'w-4 h-1.5 bg-vm-navy':'w-1.5 h-1.5 bg-outline-light');c.appendChild(d)});
+}
+
+// ── RENDER Q ──
+function startQuestions(){curQ=0;showThem('them-questions');renderQ()}
+function renderQ(){
+  const q=QS[curQ];const isTech=q.type==='technical';
+  document.getElementById('q-block-label').textContent=q.block;
+  document.getElementById('q-type-tag').innerHTML=isTech?'<span class="tag-technical">Técnica</span>':'<span class="tag-emotional">Reflexión</span>';
+  document.getElementById('q-number-tag').textContent=`Pregunta ${curQ+1} de ${QS.length}`;
+  document.getElementById('q-number-tag').style.background=isTech?'#1B2B6B':'#C8202F';
+  const card=document.getElementById('q-card');
+  card.style.background=isTech?'linear-gradient(135deg,#F8F9FD 0%,#EEF0F8 100%)':'white';
+  card.style.borderLeft=`4px solid ${isTech?'#1B2B6B':'#C8A84B'}`;
+  document.getElementById('q-text').textContent=q.text;
+  document.getElementById('q-hint').textContent=q.hint;
+  const area=document.getElementById('q-input-area');area.innerHTML='';
+  document.getElementById('btn-next-q').disabled=true;
+  if(q.input==='opts'){
+    const wrap=document.createElement('div');wrap.className='flex flex-col gap-2.5';
+    q.opts.forEach(opt=>{
+      const btn=document.createElement('button');
+      btn.className='pill-option';
+      btn.innerHTML=`<span>${opt}</span><div class="w-5 h-5 rounded-full border-2 border-vm-navy/25 flex items-center justify-center flex-shrink-0 ml-3 transition-all opt-dot"></div>`;
+      btn.onclick=()=>{
+        wrap.querySelectorAll('.pill-option').forEach(b=>{b.classList.remove('selected');const d=b.querySelector('.opt-dot');d.innerHTML='';d.style.background='';d.style.border='2px solid rgba(27,43,107,0.25)'});
+        btn.classList.add('selected');
+        const dot=btn.querySelector('.opt-dot');dot.style.background='#C8202F';dot.style.border='none';
+        dot.innerHTML='<span class="material-symbols-outlined fill-icon text-white" style="font-size:12px">check</span>';
+        answers[q.key]=opt;saveA(q.key,opt,q.text);
+        document.getElementById('btn-next-q').disabled=false;
+      };
+      wrap.appendChild(btn);
+    });
+    area.appendChild(wrap);
+  } else {
+    const ta=document.createElement('textarea');
+    ta.className='w-full border-2 border-outline-light rounded-2xl px-4 py-3 text-sm resize-none focus:outline-none focus:border-vm-navy transition-colors bg-surface-low';
+    ta.rows=4;ta.placeholder=isTech?'Escribe el dato o estimado…':'Escribe con total libertad…';
+    ta.oninput=()=>{const ok=ta.value.trim().length>=2;document.getElementById('btn-next-q').disabled=!ok;if(ok){answers[q.key]=ta.value.trim();saveA(q.key,ta.value.trim(),q.text)}};
+    area.appendChild(ta);
+  }
+  renderDots();renderMiniDots();
+  const btn=document.getElementById('btn-next-q');
+  btn.innerHTML=curQ===QS.length-1?'Finalizar <span class="material-symbols-outlined text-base">check</span>':'Siguiente <span class="material-symbols-outlined text-base">arrow_forward</span>';
+}
+function nextQ(){
+  if(curQ<QS.length-1){curQ++;renderQ()}
+  else{document.getElementById('them-bar').style.width='100%';document.getElementById('them-progress-pct').textContent='100%';showThem('them-thanks')}
+}
+
+// ── ME PANEL ──
+let lastCount=0,rendered=new Set();
+function pollAnswers(){const arr=loadA();if(arr.length!==lastCount){lastCount=arr.length;updateMeAnswers(arr)}}
+function updateMeAnswers(arr){
+  if(!arr.length)return;
+  document.getElementById('me-status-dot').className='w-2 h-2 rounded-full bg-green-400';
+  document.getElementById('me-status-txt').textContent=`${arr.length} resp.`;
+  document.getElementById('me-count').textContent=arr.length;
+  const list=document.getElementById('me-answers-list');list.innerHTML='';
+  arr.forEach(a=>{
+    const isNew=!rendered.has(a.key);rendered.add(a.key);
+    const q=QS.find(q=>q.key===a.key);const isTech=q?.type==='technical';
+    const div=document.createElement('div');
+    div.className=`rounded-xl p-3 border bg-white text-xs ${isNew?'answer-new':''} border-l-2 ${isTech?'border-l-vm-navy':'border-l-vm-gold'}`;
+    div.innerHTML=`<div class="text-outline mb-1 leading-snug line-clamp-2 text-[10px]">${a.qtext?.substring(0,55)||a.key}…</div><div class="font-semibold text-vm-navy leading-snug">${a.value.substring(0,80)}${a.value.length>80?'…':''}</div>`;
+    list.appendChild(div);
+  });
+  if(arr.length>=3){document.getElementById('btn-analyze').disabled=false;document.getElementById('btn-propuesta').disabled=false}
+}
+
+// ── ANÁLISIS IA ──
+async function runAnalysis(){
+  const arr=loadA();if(!arr.length)return;
+  const btn=document.getElementById('btn-analyze');btn.disabled=true;btn.textContent='Analizando…';
+  document.getElementById('me-status-dot').className='w-2 h-2 rounded-full bg-vm-gold animate-pulse';
+  const area=document.getElementById('me-analysis-area');
+  area.innerHTML='<div class="text-sm text-outline text-center py-8 animate-pulse">Procesando con IA…</div>';
+  const answersText=arr.map(a=>`P: ${a.qtext||a.key}\nR: "${a.value}"`).join('\n\n');
+  const sys=`Eres un experto en marketing para colegios privados NSE A en Lima. Analiza respuestas del área de marketing de Colegio Villa María La Planicie — femenino, católico, IB, STEAM, 1923. TikTok: 27K seguidores.
+ANÁLISIS PRIVADO para consultor TRAMA en la reunión ahora mismo. Referencia respuestas específicas. Directo y accionable.
+Usa EXACTAMENTE estos títulos:
+[PATRÓN CONDUCTUAL]
+[ALERTAS OPERATIVAS]
+[OPORTUNIDADES CLAVE]
+[INSIGHTS EMOCIONALES]
+Máximo 50 palabras por sección.`;
+  const sections={'[PATRÓN CONDUCTUAL]':{t:'pattern',l:'Patrón conductual',c:'#C8A84B',tc:'#8B6914'},'[ALERTAS OPERATIVAS]':{t:'alert',l:'Alertas operativas',c:'#C8202F',tc:'#C8202F'},'[OPORTUNIDADES CLAVE]':{t:'opp',l:'Oportunidades clave',c:'#16a34a',tc:'#2E7D52'},'[INSIGHTS EMOCIONALES]':{t:'ins',l:'Insights emocionales',c:'#3b82f6',tc:'#2E5AC8'}};
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,stream:true,system:sys,messages:[{role:'user',content:`Respuestas:\n\n${answersText}\n\nGenera análisis conductual privado.`}]})});
+    area.innerHTML='';
+    let fullText='',activeBody=null,created=new Set();
+    const mkCard=(key)=>{if(created.has(key))return;created.add(key);const s=sections[key];if(!s)return;if(activeBody)activeBody.classList.add('done');const card=document.createElement('div');card.className='bg-white rounded-2xl card-shadow p-5 mb-4 slide-in';card.style.borderLeft=`4px solid ${s.c}`;card.innerHTML=`<div class="flex items-center gap-2 mb-3"><div class="w-2 h-2 rounded-full" style="background:${s.c}"></div><span class="text-xs font-bold tracking-[.10em] uppercase" style="color:${s.tc}">${s.l}</span></div><p class="text-sm text-on-surface leading-relaxed cursor-blink" id="body-${s.t}"></p>`;area.appendChild(card);activeBody=card.querySelector(`#body-${s.t}`)};
+    const reader=res.body.getReader(),dec=new TextDecoder();
+    while(true){const{done,value}=await reader.read();if(done)break;const chunk=dec.decode(value);for(const line of chunk.split('\n')){if(!line.startsWith('data: '))continue;const d=line.slice(6);if(d==='[DONE]')continue;try{const p=JSON.parse(d),delta=p.delta?.text||'';if(!delta)continue;fullText+=delta;for(const key of Object.keys(sections))if(fullText.includes(key)&&!created.has(key))mkCard(key);if(activeBody){const sk=Object.keys(sections),ci=sk.findIndex(k=>sections[k].t===activeBody.id.replace('body-',''));const nk=sk[ci+1];let sc=fullText;sk.forEach(k=>{sc=sc.replace(k,'')});if(nk){const ni=sc.indexOf(nk);if(ni>-1)sc=sc.substring(0,ni)}activeBody.textContent=sc.trim()}}catch(e){}}}
+    document.querySelectorAll('.cursor-blink').forEach(el=>el.classList.add('done'));
+    addBars(area,arr);
+    document.getElementById('me-status-dot').className='w-2 h-2 rounded-full bg-green-400';
+    btn.textContent='Actualizar';btn.disabled=false;
+  }catch(err){area.innerHTML=`<div class="bg-white rounded-2xl p-5 border-l-4 border-vm-red"><p class="text-sm text-vm-red font-semibold mb-1">Error</p><p class="text-xs text-outline">${err.message}</p></div>`;btn.textContent='Reintentar';btn.disabled=false}
+}
+
+function addBars(area,arr){
+  let data=30,proc=35,intuit=55;
+  arr.forEach(a=>{
+    if(a.key==='decisiones'){if(a.value.includes('datos'))data=85;else if(a.value.includes('experiencia')){data=42;intuit=58}else if(a.value.includes('intuición')){data=15;intuit=85}}
+    if(a.key==='proceso_wa'||a.key==='resiliencia'){if(a.value.includes('siempre')||a.value.includes('redundancia'))proc=Math.max(proc,75);else if(a.value.includes('lunes')||a.value.includes('ralentiza'))proc=Math.max(proc,45);else if(a.value.includes('detiene')||a.value.includes('Depende'))proc=Math.min(proc,28)}
+    if(a.key==='atribucion'){if(a.value.includes('Sí, tenemos'))data=Math.max(data,75);else if(a.value.includes('idea'))data=Math.max(data,42);else if(a.value.includes('No lo medimos'))data=Math.min(data,20)}
+    if(a.key==='pauta'){if(a.value.includes('orgánico'))proc=Math.min(proc,25)}
+  });
+  const div=document.createElement('div');div.className='bg-white rounded-2xl card-shadow p-5 mt-2 slide-in';
+  div.innerHTML=`<div class="text-xs font-bold tracking-[.10em] uppercase text-outline mb-4">Indicadores del área</div><div class="flex flex-col gap-4">${[{l:'Orientación a datos',v:data,c:data>60?'#16a34a':data>35?'#C8A84B':'#C8202F'},{l:'Madurez de procesos',v:proc,c:proc>60?'#16a34a':proc>35?'#C8A84B':'#C8202F'},{l:'Decisión por intuición',v:intuit,c:'#3b82f6'}].map(b=>`<div><div class="flex justify-between text-xs font-medium text-on-surface mb-1.5"><span>${b.l}</span><span>${b.v}%</span></div><div class="h-2 bg-surface-low rounded-pill overflow-hidden"><div class="h-full rounded-pill bar-fill" style="width:0%;background:${b.c}" data-target="${b.v}"></div></div></div>`).join('')}</div>`;
+  area.appendChild(div);setTimeout(()=>div.querySelectorAll('.bar-fill').forEach(b=>b.style.width=b.dataset.target+'%'),100);
+}
+
+// ── POPUP PROPUESTA ──
+let proposalGenerated=false;
+function openPopup(){
+  document.getElementById('popup-propuesta').style.display='flex';
+  if(!proposalGenerated){generateProposal();proposalGenerated=true}
+}
+function closePopup(){document.getElementById('popup-propuesta').style.display='none'}
+
+async function generateProposal(){
+  const arr=loadA();if(!arr.length)return;
+  const content=document.getElementById('popup-content');
+  content.innerHTML='<div class="flex items-center gap-2 py-8 justify-center text-outline"><span class="material-symbols-outlined animate-spin text-vm-navy">progress_activity</span><span class="text-sm">Personalizando propuesta…</span></div>';
+  const answersText=arr.map(a=>`${a.qtext||a.key}: "${a.value}"`).join('\n');
+  const sys=`Eres consultor senior de TRAMA Consultora presentando una propuesta personalizada a Colegio Villa María La Planicie (Lima, NSE A, colegio femenino, IB, STEAM).
+Basado en las respuestas del diagnóstico, genera una propuesta puntual y personalizada de 3 servicios.
+Responde SOLO con un JSON con esta estructura exacta (sin backticks, sin markdown):
+{"intro":"1 frase que conecta directamente con algo que respondieron","study":{"title":"Estudio de mercado y stakeholders","pain":"dolor específico detectado en sus respuestas","action":"qué haríamos exactamente","impact":"resultado concreto para Villa María"},"process":{"title":"Levantamiento y digitalización de procesos","pain":"dolor específico detectado","action":"qué haríamos exactamente","impact":"resultado concreto"},"system":{"title":"Sistema de marketing integrado","pain":"dolor específico detectado","action":"qué haríamos exactamente","impact":"resultado concreto"},"closing":"1 frase de cierre que invite a la conversación"}`;
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,system:sys,messages:[{role:'user',content:`Respuestas del diagnóstico:\n${answersText}\n\nGenera la propuesta personalizada en JSON.`}]})});
+    const data=await res.json();
+    const raw=data.content?.[0]?.text||'';
+    let prop;
+    try{prop=JSON.parse(raw.replace(/```json|```/g,'').trim())}catch(e){content.innerHTML='<p class="text-sm text-outline text-center py-8">No se pudo generar la propuesta. Intenta de nuevo.</p>';return}
+    renderProposal(prop,content);
+  }catch(err){content.innerHTML=`<p class="text-sm text-vm-red text-center py-8">Error: ${err.message}</p>`}
+}
+
+function renderProposal(p,content){
+  content.innerHTML=`
+    <p class="text-base text-vm-navy-dark font-display italic leading-relaxed mb-6 border-l-4 border-vm-gold pl-4">${p.intro}</p>
+
+    <div class="proposal-block study">
+      <div class="flex items-center gap-2 mb-3">
+        <span class="material-symbols-outlined text-vm-gold text-lg">insights</span>
+        <span class="font-display font-semibold text-sm text-vm-navy-dark">01 · ${p.study.title}</span>
+      </div>
+      <div class="text-xs text-on-surface-muted mb-2 leading-relaxed"><span class="font-semibold text-vm-navy-dark">Lo que detectamos: </span>${p.study.pain}</div>
+      <div class="text-xs text-on-surface-muted mb-2 leading-relaxed"><span class="font-semibold text-vm-navy-dark">Lo que haríamos: </span>${p.study.action}</div>
+      <div class="text-xs font-semibold text-vm-gold leading-relaxed">→ ${p.study.impact}</div>
+    </div>
+
+    <div class="proposal-block process">
+      <div class="flex items-center gap-2 mb-3">
+        <span class="material-symbols-outlined text-vm-navy text-lg">account_tree</span>
+        <span class="font-display font-semibold text-sm text-vm-navy-dark">02 · ${p.process.title}</span>
+      </div>
+      <div class="text-xs text-on-surface-muted mb-2 leading-relaxed"><span class="font-semibold text-vm-navy-dark">Lo que detectamos: </span>${p.process.pain}</div>
+      <div class="text-xs text-on-surface-muted mb-2 leading-relaxed"><span class="font-semibold text-vm-navy-dark">Lo que haríamos: </span>${p.process.action}</div>
+      <div class="text-xs font-semibold text-vm-navy leading-relaxed">→ ${p.process.impact}</div>
+    </div>
+
+    <div class="proposal-block system">
+      <div class="flex items-center gap-2 mb-3">
+        <span class="material-symbols-outlined text-green-600 text-lg">campaign</span>
+        <span class="font-display font-semibold text-sm text-vm-navy-dark">03 · ${p.system.title}</span>
+      </div>
+      <div class="text-xs text-on-surface-muted mb-2 leading-relaxed"><span class="font-semibold text-vm-navy-dark">Lo que detectamos: </span>${p.system.pain}</div>
+      <div class="text-xs text-on-surface-muted mb-2 leading-relaxed"><span class="font-semibold text-vm-navy-dark">Lo que haríamos: </span>${p.system.action}</div>
+      <div class="text-xs font-semibold text-green-700 leading-relaxed">→ ${p.system.impact}</div>
+    </div>
+
+    <div class="mt-4 bg-vm-navy rounded-2xl px-5 py-4 text-center">
+      <p class="text-white/80 text-sm font-light italic leading-relaxed">${p.closing}</p>
+    </div>
+  `;
+}
+</script>
+</body>
+</html>
